@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>관리자 - 계단오르기 챌린지</title>
+<link rel="stylesheet" href="style.css">
+<style>body{padding-bottom:20px} main{max-width:920px;margin-top:0;padding-top:16px} .row{display:flex;gap:10px}.row button{margin-top:0}</style>
+</head>
+<body>
+<header><h1>🔧 관리자</h1><p id="mode"></p></header>
+<main>
+  <section id="login" class="card">
+    <h2>관리자 로그인</h2>
+    <input id="key" type="password" placeholder="관리자 키">
+    <button id="btnLogin">로그인</button>
+    <div id="loginMsg" class="msg"></div>
+  </section>
+
+  <section id="panel" class="hidden">
+    <div class="card">
+      <div class="stats">
+        <div><b id="cUsers">0</b><small>참가자</small></div>
+        <div><b id="cRecs">0</b><small>기록 건수</small></div>
+        <div><b id="cFloors">0</b><small>총 층수</small></div>
+        <div><b id="cFlag" style="color:var(--bad)">0</b><small>비정상 의심</small></div>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <button id="btnCsvRec" class="ghost">기록 CSV</button>
+        <button id="btnCsvUser" class="ghost">참가자 CSV</button>
+        <button id="btnReload" class="ghost">새로고침</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>초기화</h2>
+      <div class="msg" style="margin:0 0 10px">초기화 전에 위의 CSV를 먼저 내려받아 백업하세요. 되돌릴 수 없습니다.</div>
+      <div class="row">
+        <button id="btnResetRec" class="danger">기록만 초기화</button>
+        <button id="btnResetAll" class="danger">기록+참가자 전체 초기화</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>기록 목록 (부정 기록은 삭제)</h2>
+      <label style="display:flex;align-items:center;gap:8px;margin:0 0 10px;color:var(--text)">
+        <input id="onlyFlag" type="checkbox" style="width:auto"> 비정상 의심 기록만 보기
+      </label>
+      <div class="scroll"><table id="tbl"></table></div>
+    </div>
+  </section>
+</main>
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+let adminKey = sessionStorage.getItem('stair_admin') || '';
+let data = { users: [], records: [] };
+$('mode').textContent = API.isDemo ? '데모 모드 (브라우저 저장소)' : '운영 모드';
+
+async function load() {
+  data = await API.call('admin_list', { adminKey });
+  $('login').classList.add('hidden'); $('panel').classList.remove('hidden');
+  $('cUsers').textContent = data.users.length;
+  $('cRecs').textContent = data.records.length;
+  $('cFloors').textContent = data.records.reduce((s, r) => s + Number(r.floors), 0);
+  $('cFlag').textContent = data.records.filter((r) => r.flags).length;
+  const t = $('tbl'); t.textContent = '';
+  const head = t.insertRow();
+  ['시각', '로그인ID', '이름', '계열사', '걸음', '층', '소요(초)', '비정상 사유', ''].forEach((h) => (head.insertCell().outerHTML = '<th>' + h + '</th>'));
+  const list = $('onlyFlag').checked ? data.records.filter((r) => r.flags) : data.records;
+  list.slice(0, 500).forEach((r) => {
+    const tr = t.insertRow();
+    if (r.flags) tr.style.background = 'rgba(214,69,69,.12)';
+    [String(r.ts).replace('T', ' ').slice(0, 16), r.userId, r.name, r.dept, r.steps, r.floors, r.durationSec, r.flags || '']
+      .forEach((v) => (tr.insertCell().textContent = v));
+    const b = document.createElement('button');
+    b.textContent = '삭제'; b.className = 'danger'; b.style.cssText = 'padding:4px 10px;font-size:12px;margin:0;width:auto';
+    b.onclick = async () => {
+      if (!confirm(`${r.name}님의 ${r.floors}층 기록을 삭제할까요?`)) return;
+      await API.call('admin_delete', { adminKey, id: r.id }); load();
+    };
+    tr.insertCell().append(b);
+  });
+}
+$('btnLogin').onclick = async () => {
+  adminKey = $('key').value;
+  try { await load(); sessionStorage.setItem('stair_admin', adminKey); }
+  catch (e) { $('loginMsg').className = 'msg err'; $('loginMsg').textContent = e.message; }
+};
+$('btnReload').onclick = () => load();
+$('onlyFlag').onchange = () => load();
+function csv(name, rows) {
+  const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const keys = Object.keys(rows[0] || {});
+  const text = '﻿' + [keys.join(',')].concat(rows.map((r) => keys.map((k) => esc(r[k])).join(','))).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+  a.download = name; a.click();
+}
+async function reset(scope) {
+  const label = scope === 'all' ? '모든 기록과 참가자' : '모든 기록';
+  if (!confirm(`${label}를 삭제합니다. 되돌릴 수 없습니다. 계속할까요?`)) return;
+  if (prompt('확인을 위해 "초기화"를 입력하세요.') !== '초기화') return alert('취소되었습니다.');
+  try { await API.call('admin_reset', { adminKey, scope }); await load(); alert('초기화되었습니다.'); }
+  catch (e) { alert('초기화 실패: ' + e.message); }
+}
+$('btnResetRec').onclick = () => reset('records');
+$('btnResetAll').onclick = () => reset('all');
+$('btnCsvRec').onclick = () => csv('records.csv', data.records);
+$('btnCsvUser').onclick = () => csv('users.csv', data.users);
+if (adminKey) load().catch(() => {});
+</script>
+</body>
+</html>
