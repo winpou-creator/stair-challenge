@@ -6,9 +6,6 @@ window.CONFIG = {
   // Google Apps Script 웹앱 URL (README 참고). 비워두면 "데모 모드"(브라우저 저장소)로 동작합니다.
   API_URL: 'https://script.google.com/macros/s/AKfycbzaZ06vZyB-t-qkZTAbTMzoh4RdEfI_Ccgu173u0dsuJQz5-MmpduqLePsfxY6tPK2l/exec',
 
-  // 데모 모드에서만 쓰는 관리자 키 (실운영은 Apps Script 속성의 ADMIN_KEY 사용)
-  DEMO_ADMIN_KEY: '1234',
-
   // 데모 모드에서만 쓰는 입장키 (접속 주소 뒤에 ?k=demo). 운영은 Apps Script 속성의 ENTRY_KEY 사용
   DEMO_ENTRY_KEY: 'demo',
 

@@ -3,6 +3,7 @@
   const KEY = 'stair_demo_db';
   const load = () => JSON.parse(localStorage.getItem(KEY) || '{"users":{},"records":[]}');
   const save = (db) => localStorage.setItem(KEY, JSON.stringify(db));
+  const keyError = () => Object.assign(new Error('만료된 QR코드입니다.'), { code: 'KEY_INVALID' });
   const ss = (k) => { try { return sessionStorage.getItem(k) || ''; } catch (_) { return ''; } };
   const today = () => new Date().toISOString().slice(0, 10);
 
@@ -30,6 +31,7 @@
   }
 
   const demo = {
+    check: () => ({}),
     register({ userId, name, dept }) {
       const db = load();
       db.users[userId] = { userId, name, dept, createdAt: new Date().toISOString() };
@@ -73,12 +75,10 @@
     },
     ranking: () => ranking(load()),
     admin_list({ adminKey }) {
-      if (adminKey !== CONFIG.DEMO_ADMIN_KEY) throw new Error('관리자 키가 올바르지 않습니다.');
       const db = load();
       return { users: Object.values(db.users), records: db.records.slice().reverse() };
     },
     admin_reset({ adminKey, scope }) {
-      if (adminKey !== CONFIG.DEMO_ADMIN_KEY) throw new Error('관리자 키가 올바르지 않습니다.');
       const db = load();
       db.records = [];
       if (scope === 'all') db.users = {};
@@ -86,7 +86,6 @@
       return {};
     },
     admin_delete({ adminKey, id }) {
-      if (adminKey !== CONFIG.DEMO_ADMIN_KEY) throw new Error('관리자 키가 올바르지 않습니다.');
       const db = load();
       db.records = db.records.filter((r) => String(r.id) !== String(id));
       save(db);
@@ -101,9 +100,7 @@
         payload = { ...payload, key: ss('stair_key'), token: ss('stair_token') };
       }
       if (!CONFIG.API_URL) {
-        if (!action.startsWith('admin_') && payload.key !== CONFIG.DEMO_ENTRY_KEY) {
-          throw new Error('계단 QR 코드를 스캔해서 접속해 주세요.');
-        }
+        if (!action.startsWith('admin_') && payload.key !== CONFIG.DEMO_ENTRY_KEY) throw keyError();
         return demo[action](payload);
       }
       const res = await fetch(CONFIG.API_URL, {
@@ -112,7 +109,10 @@
         body: JSON.stringify({ action, ...payload }),
       });
       const j = await res.json();
-      if (!j.ok) throw new Error(j.error || '서버 오류');
+      if (!j.ok) {
+        if (j.error === 'KEY_INVALID') throw keyError();
+        throw new Error(j.error || '서버 오류');
+      }
       return j.data;
     },
   };
